@@ -2,8 +2,13 @@
 // задачи, напоминание, сигнал монитора. Что важно, решает процесс плагина (main.py) и пишет в канал плагина; страница
 // показывает новое, пока вкладка не перед глазами, и снимает уведомление о вопросе, на который уже ответили.
 // Пока страница показывает уведомления браузера, она отмечается у процесса — уведомления macOS тогда молчат.
+// Бейдж: пока вкладка не перед глазами, новое прибавляет число в названии вкладки, точку на её значке и число на значке
+// приложения (где браузер его даёт); вернулись на вкладку, и всё снято. От разрешения на уведомления не зависит.
+import { Badge, Title } from "./badge.js";
+
 const CHANNEL = "notify";
 const KEY = "hub.notify";
+const BADGE_KEY = "hub.notify.badge";
 const HERE_MS = 10000;
 
 let hub = null;
@@ -16,6 +21,66 @@ const proc = (path, method = "GET") =>
 
 let last = null, reading = false;
 const shown = new Map();   // qid -> уведомление о вопросе: ответили — снять
+const away = () => document.hidden || !document.hasFocus();
+const badgeOn = () => localStorage.getItem(BADGE_KEY) !== "off";
+const badge = new Badge(), title = new Title();
+const count = () => (badgeOn() ? badge.count : 0);
+let icon = null, dot = null, appBadge = 0;   // исходный значок вкладки, он же с точкой, число на значке приложения
+
+function retitle() {
+  const t = title.next(document.title, count());
+  if (t !== null) document.title = t;
+}
+
+function dotIcon(href) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const c = document.createElement("canvas");
+        c.width = c.height = 64;
+        const g = c.getContext("2d");
+        g.drawImage(img, 0, 0, 64, 64);
+        g.beginPath();
+        g.arc(48, 16, 15, 0, 2 * Math.PI);
+        g.fillStyle = "#ff3b30";
+        g.fill();
+        g.lineWidth = 4;
+        g.strokeStyle = "#fff";
+        g.stroke();
+        resolve(c.toDataURL("image/png"));
+      } catch { resolve(null); }
+    };
+    img.onerror = () => resolve(null);
+    img.src = href;
+  });
+}
+
+function setIcon(href, type) {
+  const link = document.querySelector('link[rel~="icon"]');
+  if (!link || link.href === href) return;
+  link.type = type;
+  link.href = href;
+}
+
+async function paintBadge() {
+  const n = count();
+  retitle();
+  if (n !== appBadge && "setAppBadge" in navigator) {
+    appBadge = n;
+    (n ? navigator.setAppBadge(n) : navigator.clearAppBadge()).catch(() => {});
+  }
+  const link = document.querySelector('link[rel~="icon"]');
+  if (link && !icon) icon = { href: link.href, type: link.type };
+  if (!icon) return;
+  if (!n) return setIcon(icon.href, icon.type);
+  dot = dot || await dotIcon(icon.href);
+  if (dot && count()) setIcon(dot, "image/png");   // пока рисовали, могли вернуться на вкладку
+}
+
+function back() {
+  if (!away() && badge.clear()) paintBadge();
+}
 
 function show(a) {
   const ask = a.kind === "ask" || a.kind === "reminder";
@@ -38,8 +103,15 @@ async function tick(snap) {
       if (!String(p.by).startsWith("плагин ")) continue;   // писать в канал могут и сессии — верим только процессу
       let a;
       try { a = JSON.parse(p.text); } catch { continue; }
-      if (a.kind === "answered") { shown.get(a.qid)?.close(); shown.delete(a.qid); continue; }
-      if (on() && (document.hidden || !document.hasFocus())) show(a);   // перед глазами — и так видно
+      if (a.kind === "answered") {
+        shown.get(a.qid)?.close();
+        shown.delete(a.qid);
+        if (badge.answered(a.qid)) paintBadge();
+        continue;
+      }
+      if (!away()) continue;   // перед глазами — и так видно
+      if (on()) show(a);
+      if (badgeOn() && badge.add(a)) paintBadge();
     }
   } finally { reading = false; }
 }
@@ -87,6 +159,31 @@ function browserSection() {
   return box;
 }
 
+function badgeSection() {
+  const box = el("div", "settings-sec");
+  const state = el("p", "jev-state");
+  const btn = el("button", "btn");
+  btn.type = "button";
+  const paint = () => {
+    state.className = badgeOn() ? "jev-state on" : "jev-state";
+    state.textContent = badgeOn()
+      ? "Включён: пока вкладка хаба не перед глазами, новое уведомление прибавляет число в названии вкладки и красную точку на её значке (Safari точку не показывает: значок вкладки он берёт только при загрузке страницы). Вернулись на вкладку, и всё снято."
+      : "Выключен.";
+    btn.textContent = badgeOn() ? "Выключить" : "Включить";
+  };
+  btn.addEventListener("click", () => {
+    if (badgeOn()) { localStorage.setItem(BADGE_KEY, "off"); badge.clear(); }
+    else localStorage.removeItem(BADGE_KEY);
+    paint();
+    paintBadge();
+  });
+  paint();
+  const row = el("div", "upd-actions");
+  row.append(btn);
+  box.append(el("h3", "day", "Значок на вкладке"), state, row, el("p", "hint", "Работает и без разрешения на уведомления. Хаб, добавленный в Dock из Safari или установленный из Chrome, показывает число и на значке приложения."));
+  return box;
+}
+
 function macSection() {
   const box = el("div", "settings-sec");
   const note = el("p", "hint");
@@ -130,9 +227,13 @@ export default function register(api) {
     render(root) {
       if (root.dataset.built) return;   // кнопки и ответы не терять на каждом снимке
       root.dataset.built = "1";
-      root.replaceChildren(browserSection(), macSection());
+      root.replaceChildren(browserSection(), badgeSection(), macSection());
     },
   });
+  const t = document.querySelector("title");
+  if (t) new MutationObserver(retitle).observe(t, { childList: true, characterData: true, subtree: true });
+  document.addEventListener("visibilitychange", back);
+  window.addEventListener("focus", back);
   here();
   setInterval(here, HERE_MS);
 }
