@@ -1,9 +1,10 @@
-"""Процесс плагина «Уведомления»: читает журнал хаба, решает, что достойно уведомления (alerts.py), и пишет это в
-канал плагина — страница показывает уведомлением браузера; когда ни одной страницы с ними нет — уведомление macOS
-(mac.py). Ядро не правит: читает журнал, пишет только фактами в ящик (EXTENDING.md).
+"""The "Notifications" plugin process: reads the hub journal, decides what deserves a notification (alerts.py) and
+writes it to the plugin channel — the page shows it as a browser notification; when no page with them is open, a macOS
+notification (mac.py). It does not change the core: it reads the journal and writes only facts to the spool
+(EXTENDING.md).
 
-Страница и процесс говорят по 127.0.0.1:<порт страницы + 8>: отметка «я открыта и показываю уведомления» и
-настройка уведомлений macOS. Принимаются только запросы со страницы хаба (Origin)."""
+The page and the process talk over 127.0.0.1:<page port + 8>: the check-in "I am open and show notifications" and the
+macOS notification setting. Only requests from the hub page are accepted (Origin)."""
 import http.server
 import json
 import os
@@ -12,19 +13,29 @@ import time
 
 from core import journal, spool
 
-from alerts import Alerts
+from alerts import Alerts, lang
 from mac import Mac
 
 STATE = os.environ.get("HUB_STATE_DIR", "")
 NAME = os.environ.get("HUB_EXTENSION", "notify")
-CHANNEL = NAME.split(":")[-1]   # канал плагина — имя без автора
+CHANNEL = NAME.split(":")[-1]   # the plugin channel — the name without the author
 WEB_PORT = int(os.environ.get("HUB_WEB_PORT", "8787"))
 PORT = WEB_PORT + 8
-PAGE_ALIVE = 25   # с: страница отмечается раз в 10 с; молчит дольше — закрыта
+PAGE_ALIVE = 25   # s: the page checks in every 10 s; silent longer — closed
+TEXTS = {
+    "en": {"on": "macOS notifications are on. The first one will arrive in a few seconds",
+           "off": "macOS notifications are off",
+           "test": "A test macOS notification will arrive in a few seconds",
+           "sample": "This is how hub notifications look. A click opens the page."},
+    "ru": {"on": "Уведомления macOS включены. Первое придёт через несколько секунд",
+           "off": "Уведомления macOS выключены",
+           "test": "Пробное уведомление macOS придёт через несколько секунд",
+           "sample": "Так выглядят уведомления хаба. Клик открывает страницу."},
+}
 
 
 class Follower:
-    """Новые события журнала по одному, с текущего места; после ротации — новый журнал с его состояния."""
+    """New journal events one by one, from the current place; after a rotation — the new journal from its state."""
 
     def __init__(self, state_dir):
         self.dir, self.path = state_dir, os.path.join(state_dir, "journal.jsonl")
@@ -40,7 +51,7 @@ class Follower:
         self.seq = self.state.get("seq", 0)
 
     def events(self):
-        """(новые события, начат ли журнал заново: тогда состояние — self.state)."""
+        """(new events, whether the journal started anew: then the state is self.state)."""
         if journal.identity(self.path) != self.ino:
             self.start()
             return [], True
@@ -86,12 +97,14 @@ class Settings:
 
 
 class Plugin:
-    def __init__(self, state_dir, mac=None, put=None, clock=time.time):
+    def __init__(self, state_dir, mac=None, put=None, clock=time.time, lang=lambda: "en"):
         self.dir = os.path.join(state_dir, "notify")
         self.settings = Settings(os.path.join(self.dir, "settings.json"))
+        self.lang = lang   # () -> "en" | "ru": the language of the texts the page shows
         repo = os.environ.get("HUB_REPO") or ""
         self.mac = mac or Mac(self.dir, f"http://127.0.0.1:{WEB_PORT}/",
-                              logo=os.path.join(repo, "deploy", "mac", "Agents Hub.app", "Contents", "Resources", "logo.icns"))
+                              logo=os.path.join(repo, "deploy", "mac", "Agents Hub.app", "Contents", "Resources", "logo.icns"),
+                              lang=lambda: self.lang())
         self.put = put or (lambda data: spool.put(os.path.join(state_dir, "spool"), "ext.post", None, data,
                                                    src=f"ext:{NAME}"))
         self.clock, self.seen = clock, 0.0
@@ -107,9 +120,10 @@ class Plugin:
             self.mac.handle(a, on, page)
 
     def act(self, path, origin):
-        """Запрос страницы -> (код, ответ). Только со страницы хаба этой машины."""
+        """A page request -> (code, answer). Only from the hub page of this machine."""
         if origin not in (f"http://127.0.0.1:{WEB_PORT}", f"http://localhost:{WEB_PORT}"):
-            return 403, {"error": "только со страницы хаба"}
+            return 403, {"error": "only from the hub page"}
+        say = TEXTS.get(self.lang(), TEXTS["en"])
         if path == "/here":
             self.seen = self.clock()
             return 200, {"ok": True}
@@ -117,18 +131,18 @@ class Plugin:
             return 200, self.mac.status(self.settings.mac())
         if path in ("/mac/on", "/mac/off"):
             self.settings.set_mac(path.endswith("/on"))
-            if path.endswith("/on"):   # сборка помощника — до минуты; первое уведомление — и вопрос macOS о разрешении
+            if path.endswith("/on"):   # the helper builds in up to a minute; the first one also asks macOS for permission
                 self.test()
-                return 200, {"text": "Уведомления macOS включены. Первое придёт через несколько секунд"}
-            return 200, {"text": "Уведомления macOS выключены"}
+                return 200, {"text": say["on"]}
+            return 200, {"text": say["off"]}
         if path == "/mac/test":
             self.test()
-            return 200, {"text": "Пробное уведомление macOS придёт через несколько секунд"}
-        return 404, {"error": "нет такого"}
+            return 200, {"text": say["test"]}
+        return 404, {"error": "no such path"}
 
     def test(self):
         threading.Thread(target=self.mac.post, daemon=True, args=({
-            "id": "hub-test", "title": "Agents Hub", "text": "Так выглядят уведомления хаба. Клик открывает страницу.",
+            "id": "hub-test", "title": "Agents Hub", "text": TEXTS.get(self.lang(), TEXTS["en"])["sample"],
             "href": "#/settings"},)).start()
 
 
@@ -157,11 +171,11 @@ def serve(plugin):
 
 
 def main():
-    plugin = Plugin(STATE)
-    serve(plugin)
     follow = Follower(STATE)
     alerts = Alerts(follow.state)
-    print(f"уведомления: канал {CHANNEL}, страница — 127.0.0.1:{PORT}", flush=True)
+    plugin = Plugin(STATE, lang=lambda: lang(alerts.st))
+    serve(plugin)
+    print(f"notify: channel {CHANNEL}, page — 127.0.0.1:{PORT}", flush=True)
     while True:
         evs, restarted = follow.events()
         if restarted:

@@ -1,8 +1,8 @@
 {
   "name": "notify",
   "icon": "icon.svg",
-  "description": "Уведомления браузера и macOS о том, что важно вам: вопрос вам, ответ хаба, ответ на ваше сообщение, итог вашей задачи, напоминание, сигнал монитора. Клик открывает нужную сессию; на вопрос ответили — уведомление снимается. Пока вкладка хаба не перед глазами, в её названии число новых, на значке точка",
-  "why": "Не держать вкладку хаба перед глазами и не зависеть от Telegram: вопрос флота видно сразу, даже когда страница закрыта",
+  "description": "Browser and macOS notifications about what matters to you: a question for you, the hub's answer, a reply to your message, the result of your task, a reminder, a monitor's signal. A click opens the session; an answered question takes its notification away. While the hub tab is out of sight, its title shows the number of new ones and its icon a dot",
+  "why": "No need to keep the hub tab in view or depend on Telegram: a question from the fleet is seen at once, even when the page is closed",
   "version": "1.1.0",
   "hub": "^1.7",
   "run": ["python3", "main.py"],

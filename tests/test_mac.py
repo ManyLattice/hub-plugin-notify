@@ -1,5 +1,5 @@
-"""Уведомления macOS: показать новое, снять показанное о вопросе, на который ответили; молчать, пока открыта страница
-с уведомлениями браузера или они выключены; помощник собирается один раз на исходник, в папке состояния."""
+"""macOS notifications: show what is new, take away the shown one about an answered question; stay silent while a page
+with browser notifications is open or when they are off; the helper is built once per source, in the state folder."""
 import os
 import plistlib
 import shutil
@@ -10,8 +10,8 @@ import mac
 
 
 def alert(seq, kind="reply", qid=None, session="hub"):
-    a = {"id": f"a{seq}", "seq": seq, "kind": kind, "session": session, "title": f"{session} отвечает",
-         "text": f"текст {seq}", "href": f"#/s/{session}", "urgent": False}
+    a = {"id": f"a{seq}", "seq": seq, "kind": kind, "session": session, "title": f"{session} replies",
+         "text": f"text {seq}", "href": f"#/s/{session}", "urgent": False}
     if qid:
         a["qid"] = qid
     return a
@@ -44,8 +44,8 @@ class MacTest(unittest.TestCase):
 
     def test_shows_and_the_click_opens_the_session(self):
         self.mac.handle(alert(9, session="maps"), on=True, page_open=False)
-        self.assertEqual(self.posted(), [["post", "a9", "maps отвечает", "текст 9", "http://127.0.0.1:8787/#/s/maps"]])
-        self.assertEqual(self.run.calls[0][:2], ["open", "-n"])          # через LaunchServices: напрямую macOS не пускает
+        self.assertEqual(self.posted(), [["post", "a9", "maps replies", "text 9", "http://127.0.0.1:8787/#/s/maps"]])
+        self.assertEqual(self.run.calls[0][:2], ["open", "-n"])          # through LaunchServices: directly macOS refuses
 
     def test_silent_while_a_page_shows_them_or_when_off(self):
         self.mac.handle(alert(3), on=True, page_open=True)
@@ -60,7 +60,7 @@ class MacTest(unittest.TestCase):
     def test_macos_refusal_is_in_the_status(self):
         self.run.code = mac.DENIED
         self.mac.handle(alert(2), on=True, page_open=False)
-        self.assertIn("запрещ", self.mac.status(True)["problem"])
+        self.assertIn("does not allow", self.mac.status(True)["problem"])
 
     def test_status_says_what_is_missing(self):
         self.assertFalse(mac.Mac(self.dir, "", platform="linux").status(True)["available"])
@@ -74,11 +74,11 @@ class MacTest(unittest.TestCase):
         tools = [os.path.basename(c[0]) for c in self.run.calls]
         self.assertEqual(tools.count("swiftc"), 1)
         self.assertIn("codesign", tools)
-        self.assertTrue(m.app().startswith(self.dir))                    # не в /tmp: оттуда macOS уведомлять не даёт
+        self.assertTrue(m.app().startswith(self.dir))                    # not in /tmp: from there macOS gives no notifications
         with open(os.path.join(m.app(), "Contents", "Info.plist"), "rb") as f:
             info = plistlib.load(f)
         self.assertEqual((info["CFBundleIdentifier"], info["CFBundleName"]), (mac.BUNDLE_ID, "Agents Hub"))
-        self.assertIn("CFBundleVersion", info)                           # без него macOS молча запрещает
+        self.assertIn("CFBundleVersion", info)                           # without it macOS silently denies
 
 
 if __name__ == "__main__":

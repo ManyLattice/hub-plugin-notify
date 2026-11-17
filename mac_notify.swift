@@ -1,9 +1,9 @@
-// Помощник уведомлений macOS для хаба (mac.py плагина собирает его в папке состояния хаба).
-//   hub-notify post <id> <title> <body> <url>   показать; клик откроет url
-//   hub-notify remove <id>                      снять показанное (на вопрос уже ответили)
-//   без аргументов — его запустила macOS по клику: открыть url уведомления и выйти
-// Хаб запускает его через open: исполняемый файл напрямую macOS уведомлять не пускает. Код выхода 3 и «not allowed»
-// в stderr — macOS не разрешает уведомления этому помощнику.
+// The hub's macOS notification helper (the plugin's mac.py builds it in the hub state folder).
+//   hub-notify post <id> <title> <body> <url>   show; a click opens url
+//   hub-notify remove <id>                      take the shown one away (the question is already answered)
+//   no arguments — macOS launched it on a click: open the notification's url and exit
+// The hub runs it through open: macOS does not let the executable notify when run directly. Exit code 3 and
+// "not allowed" in stderr — macOS does not allow this helper notifications.
 import AppKit
 import UserNotifications
 
@@ -16,7 +16,7 @@ final class Helper: NSObject, NSApplicationDelegate, UNUserNotificationCenterDel
 
     //MARK: - NSApplicationDelegate
 
-    // Делегат ставится до конца запуска: иначе клик, которым macOS запустила помощника, теряется.
+    // The delegate is set before launching ends: otherwise the click macOS launched the helper with is lost.
     func applicationWillFinishLaunching(_ notification: Notification) {
         center.delegate = self
     }

@@ -1,8 +1,8 @@
-"""Уведомления macOS, когда ни одна страница хаба с уведомлениями браузера не открыта (иначе — два об одном).
+"""macOS notifications, when no hub page with browser notifications is open (otherwise — two about one thing).
 
-Показывает маленький помощник (mac_notify.swift): плагин собирает его сам в папке состояния хаба (нужны Command
-Line Tools: swiftc), подпись своя, без сертификата. osascript не годится: клик по его уведомлению открывает
-«Редактор скриптов», а не хаб."""
+A small helper shows them (mac_notify.swift): the plugin builds it itself in the hub state folder (needs the Command
+Line Tools: swiftc), ad-hoc signed, without a certificate. osascript does not fit: a click on its notification opens
+Script Editor, not the hub."""
 import hashlib
 import os
 import plistlib
@@ -15,16 +15,33 @@ import threading
 SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mac_notify.swift")
 BUNDLE_ID = "com.hub-core.notify"
 EXE = "hub-notify"
-DENIED = 3   # код выхода помощника: macOS не разрешает ему уведомления
+DENIED = 3   # the helper's exit code: macOS does not allow it notifications
+TEXTS = {
+    "en": {"tools": "Apple's Command Line Tools are needed: run xcode-select --install in a terminal",
+           "build": "did not build: {err}", "helper": "Notification helper {e}",
+           "said": "Notification helper: {said}",
+           "denied": "macOS does not allow hub notifications: allow them in System Settings → Notifications → "
+                     "Agents Hub"},
+    "ru": {"tools": "Нужны Command Line Tools от Apple: выполните в терминале xcode-select --install",
+           "build": "не собрался: {err}", "helper": "Помощник уведомлений {e}",
+           "said": "Помощник уведомлений: {said}",
+           "denied": "macOS запрещает уведомления хаба: разрешите их в «Системные настройки» → «Уведомления» → "
+                     "«Agents Hub»"},
+}
 
 
 class Mac:
-    def __init__(self, data_dir, base, logo=None, run=subprocess.run, platform=sys.platform, which=shutil.which):
+    def __init__(self, data_dir, base, logo=None, run=subprocess.run, platform=sys.platform, which=shutil.which,
+                 lang=lambda: "en"):
         self.dir, self.base, self.logo = data_dir, base, logo
         self.run, self.platform, self.which = run, platform, which
-        self.shown = {}       # qid -> id показанного уведомления о вопросе
+        self.lang = lang      # () -> "en" | "ru": the language of the problem texts the page shows
+        self.shown = {}       # qid -> id of the shown notification about a question
         self.problem = None
         self.lock = threading.Lock()
+
+    def say(self, key):
+        return TEXTS.get(self.lang(), TEXTS["en"])[key]
 
     def app(self):
         return os.path.join(self.dir, "Agents Hub Notify.app")
@@ -33,12 +50,11 @@ class Mac:
         if self.platform != "darwin":
             return {"available": False}
         if not self.which("swiftc"):
-            return {"available": True, "on": on,
-                    "problem": "Нужны Command Line Tools от Apple: выполните в терминале xcode-select --install"}
+            return {"available": True, "on": on, "problem": self.say("tools")}
         return {"available": True, "on": on, "problem": self.problem}
 
     def handle(self, a, on, page_open):
-        """Уведомление процесса: показать, снять показанное о вопросе (answered) или промолчать."""
+        """A notification of the process: show it, take away the shown one about a question (answered) or stay silent."""
         if self.platform != "darwin":
             return
         if a["kind"] == "answered":
@@ -56,8 +72,8 @@ class Mac:
                            self.base + a["href"])
 
     def ensure_built(self):
-        """Собрать помощника, если его нет или исходник поменялся. Не из /tmp и с CFBundleVersion — иначе macOS
-        молча запрещает ему уведомления."""
+        """Build the helper if it is missing or the source changed. Not in /tmp and with CFBundleVersion — otherwise
+        macOS silently denies it notifications."""
         with self.lock:
             with open(SRC, "rb") as f:
                 digest = hashlib.sha256(f.read()).hexdigest()[:16]
@@ -85,7 +101,7 @@ class Mac:
             r = self.run([self.which("swiftc"), "-O", "-swift-version", "5", SRC, "-o", out],
                          capture_output=True, text=True, timeout=300)
             if r.returncode != 0:
-                raise RuntimeError("не собрался: " + (r.stderr or "").strip()[-300:])
+                raise RuntimeError(self.say("build").format(err=(r.stderr or "").strip()[-300:]))
             self.run([self.which("codesign") or "codesign", "--force", "--sign", "-", os.path.dirname(contents)],
                      capture_output=True, text=True, timeout=60)
             shutil.rmtree(self.app(), ignore_errors=True)
@@ -98,9 +114,9 @@ class Mac:
         try:
             self.ensure_built()
         except (OSError, RuntimeError, subprocess.SubprocessError) as e:
-            self.problem = f"Помощник уведомлений {e}"
+            self.problem = self.say("helper").format(e=e)
             return None
-        # через LaunchServices (open), не исполняемым файлом напрямую: так macOS уведомлять не пускает
+        # through LaunchServices (open), not the executable directly: that way macOS does not let it notify
         os.makedirs(self.dir, exist_ok=True)
         fd, err = tempfile.mkstemp(prefix="hub-notify-", dir=self.dir)
         os.close(fd)
@@ -114,10 +130,9 @@ class Mac:
         code = r.returncode
         if code == 0 and said.strip():
             code = DENIED if "not allowed" in said else 1
-            self.problem = None if code == DENIED else f"Помощник уведомлений: {said.strip()[-200:]}"
+            self.problem = None if code == DENIED else self.say("said").format(said=said.strip()[-200:])
         if code == DENIED:
-            self.problem = ("macOS запрещает уведомления хаба: разрешите их в «Системные настройки» → «Уведомления» → "
-                            "«Agents Hub»")
+            self.problem = self.say("denied")
         elif code == 0 and args[0] == "post":
             self.problem = None
         return code

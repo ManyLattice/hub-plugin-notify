@@ -1,9 +1,10 @@
-// Счёт бейджа «есть новое уведомление» без DOM: что пришло, пока вкладка не перед глазами, и что из этого уже снято.
-// Название вкладки «(N) <имя>»: ядро на каждой перерисовке ставит своё имя, плагин кладёт число поверх.
+// The "there is a new notification" badge count without the DOM: what came while the tab was out of sight, and what of
+// it is already taken away. The tab title "(N) <name>": the core sets its name on every redraw, the plugin puts the
+// number on top.
 
 export class Badge {
   constructor() {
-    this.items = new Map();   // id уведомления -> qid вопроса (ответили, и оно уходит из счёта)
+    this.items = new Map();   // notification id -> question qid (answered, and it leaves the count)
   }
 
   get count() {
@@ -29,8 +30,8 @@ export class Badge {
   }
 }
 
-// Название вкладки с числом поверх того, что ставит ядро. next(текущее, N) -> какое поставить или null (уже так):
-// своё же название не принимается за новое имя, поэтому наблюдатель за <title> не уходит в цикл.
+// The tab title with the number on top of what the core sets. next(current, N) -> the one to set, or null (already
+// so): its own title is not taken for a new name, so the <title> observer does not loop.
 export class Title {
   constructor() {
     this.base = null;

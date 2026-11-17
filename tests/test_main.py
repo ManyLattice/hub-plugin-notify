@@ -1,5 +1,6 @@
-"""Процесс плагина: уведомления — постами в канал плагина от его имени; страница отмечается, что открыта (тогда
-macOS молчит); говорит он только со страницей хаба; журнал читает с текущего места и после ротации."""
+"""The plugin process: notifications go as posts to the plugin channel in its name; the page checks in that it is open
+(then macOS stays silent); it talks only to the hub page; it reads the journal from the current place and after a
+rotation."""
 import json
 import os
 import shutil
@@ -36,7 +37,7 @@ class PluginTest(unittest.TestCase):
         self.p.test = lambda: None
 
     def test_alerts_go_to_the_plugin_channel_as_the_plugin(self):
-        self.p.emit([{"id": "a5", "kind": "reply", "title": "hub отвечает", "text": "готово"}])
+        self.p.emit([{"id": "a5", "kind": "reply", "title": "hub replies", "text": "done"}])
         (post,) = self.posts
         self.assertEqual((post["plugin"], post["channel"], post["sender"], post["owner"]),
                          (main.CHANNEL, "plugin", main.NAME, False))
@@ -63,14 +64,14 @@ class FollowerTest(unittest.TestCase):
         d = tempfile.mkdtemp(prefix="notify-j-")
         self.addCleanup(shutil.rmtree, d, True)
         j = journal.Journal(os.path.join(d, "journal.jsonl"))
-        j.append("owner.notify", data={"text": "старое"}, ts=1)
+        j.append("owner.notify", data={"text": "old"}, ts=1)
         f = main.Follower(d)
         self.assertEqual(f.events(), ([], False))
-        j.append("owner.notify", data={"text": "новое"}, ts=2)
+        j.append("owner.notify", data={"text": "new"}, ts=2)
         evs, restarted = f.events()
-        self.assertEqual(([e["data"]["text"] for e in evs], restarted), (["новое"], False))
+        self.assertEqual(([e["data"]["text"] for e in evs], restarted), (["new"], False))
         os.replace(os.path.join(d, "journal.jsonl"), os.path.join(d, "old.jsonl"))
-        journal.Journal(os.path.join(d, "journal.jsonl")).append("owner.notify", data={"text": "в новом"}, ts=3)
+        journal.Journal(os.path.join(d, "journal.jsonl")).append("owner.notify", data={"text": "in the new one"}, ts=3)
         self.assertEqual(f.events()[1], True)
 
 

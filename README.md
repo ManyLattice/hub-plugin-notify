@@ -1,33 +1,37 @@
 # hub-plugin-notify
 
-Плагин [Agents Hub](https://github.com/flagman/agents-hub-core): уведомления браузера и macOS о том, что важно
-владельцу, без Telegram. Вопрос вам, ответ хаба, ответ сессии на ваше сообщение, итог вашей задачи, напоминание о
-вопросе, сигнал монитора. Клик открывает нужную сессию; на вопрос ответили - уведомление снимается.
+An [Agents Hub](https://github.com/flagman/agents-hub-core) plugin: browser and macOS notifications about what matters
+to the owner, without Telegram. A question for you, the hub's answer, a session's reply to your message, the result of
+your task, a reminder about a question, a monitor's signal. A click opens the session; once a question is answered, its
+notification is taken away.
 
-Бейдж: пока вкладка хаба не перед глазами, каждое новое уведомление прибавляет число в названии вкладки «(N) <имя хаба>»,
-красную точку на её значке и число на значке приложения (хаб, добавленный в Dock из Safari или установленный из Chrome).
-Вернулись на вкладку - снимается; на вопрос ответили - он уходит и из числа. Работает без разрешения на уведомления,
-выключается в «Настройки» → «Уведомления». Safari точку на значке вкладки не показывает: значок он берёт только при
-загрузке страницы.
+Badge: while the hub tab is out of sight, every new notification adds to the number in the tab title "(N) <hub name>",
+a red dot on its icon and the number on the app icon (a hub added to the Dock from Safari or installed from Chrome).
+Back on the tab, it is cleared; an answered question leaves the count too. Works without the notification permission;
+turned off in "Settings" → "Notifications". Safari does not show the dot on the tab icon: it takes the icon only when
+the page loads.
 
-<img src="icon.svg" width="256" alt="Уведомления">
+<img src="icon.svg" width="256" alt="Notifications">
 
-Ядро хаба не правит: процесс плагина читает журнал и пишет в канал плагина (API 1.2), страница показывает.
+The plugin does not change the hub core: its process reads the journal and writes to the plugin channel (API 1.2), the
+page shows what it gets. The page texts follow the hub language (`hub.lang`, Plugin API 1.25): English by default,
+Russian for a Russian hub.
 
-## Как устроено
+## How it works
 
-- `main.py` - процесс рядом с ядром (`run`). Читает журнал с текущего места, `alerts.py` решает, что достойно
-  уведомления, каждое уходит постом в канал `notify` от имени плагина.
-- `web/main.js` - модуль страницы. Читает канал и показывает новое уведомлением браузера, пока вкладка не перед
-  глазами; вкладка «Настройки» → «Уведомления». `web/badge.js` - счёт бейджа и название вкладки, без DOM (тест -
-  `tests/test_badge_js.py`, нужен node).
-- `mac.py` + `mac_notify.swift` - уведомления macOS, когда ни одна страница с уведомлениями браузера не открыта.
-  Помощник «Agents Hub» плагин собирает сам в `<папка состояния>/notify` (нужны Command Line Tools: `xcode-select
-  --install`). Страница раз в 10 с отмечается у процесса на `127.0.0.1:<порт страницы + 8>`; процесс принимает
-  только запросы со страницы хаба этой машины.
+- `main.py` - the process next to the core (`run`). Reads the journal from the current place, `alerts.py` decides what
+  deserves a notification, and each one goes as a post to the `notify` channel in the plugin's name.
+- `web/main.js` - the page module. Reads the channel and shows what is new as a browser notification while the tab is
+  out of sight; the "Settings" → "Notifications" tab. `web/badge.js` - the badge count and the tab title, without the
+  DOM (test - `tests/test_badge_js.py`, needs node).
+- `mac.py` + `mac_notify.swift` - macOS notifications when no page with browser notifications is open. The plugin
+  builds the "Agents Hub" helper itself in `<state folder>/notify` (needs the Command Line Tools: `xcode-select
+  --install`). The page checks in with the process every 10 s on `127.0.0.1:<page port + 8>`; the process accepts
+  only requests from the hub page of this machine. On Linux and Windows this part is off: browser notifications and
+  the badge work as everywhere.
 
-## Тесты
+## Tests
 
 ```
-PYTHONPATH=<папка кода хаба>:. python3 -m unittest discover -s tests
+PYTHONPATH=<hub code folder>:. python3 -m unittest discover -s tests
 ```

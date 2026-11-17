@@ -1,5 +1,5 @@
-"""Бейдж страницы (web/badge.js): что прибавляет счёт, что его снимает; число в названии вкладки поверх имени, которое
-ставит ядро, без цикла с наблюдателем за <title>."""
+"""The page badge (web/badge.js): what adds to the count, what clears it; the number in the tab title on top of the name
+the core sets, without a loop with the <title> observer."""
 import json
 import os
 import shutil
@@ -21,7 +21,7 @@ for (const [op, arg] of steps.ops) {
   if (op === "core") doc = arg;
   if (op === "title") {
     const sets = [];
-    for (let i = 0; i < 5; i++) {   // как MutationObserver: поставили, и он зовётся снова, пока не скажет «уже так»
+    for (let i = 0; i < 5; i++) {   // like a MutationObserver: set, and it is called again until it says "already so"
       const next = t.next(doc, arg);
       if (next === null) break;
       doc = next;
@@ -43,7 +43,7 @@ def run(ops, title=""):
     return json.loads(r.stdout)
 
 
-@unittest.skipUnless(NODE, "нужен node")
+@unittest.skipUnless(NODE, "needs node")
 class BadgeJs(unittest.TestCase):
     def test_each_new_alert_counts_once(self):
         got = run([["add", {"id": "a1", "kind": "ask", "qid": "q1"}], ["add", {"id": "a2", "kind": "task"}],
@@ -66,18 +66,18 @@ class BadgeJs(unittest.TestCase):
         self.assertEqual(got, [[False, 0], [True, 1], [True, 2], [True, 0], [True, 1]])
 
     def test_the_title_carries_the_number_over_the_hub_name(self):
-        got = run([["title", 0], ["title", 2], ["title", 2], ["title", 3], ["title", 0]], title="Хаб · Работа")
-        self.assertEqual(got, [["Хаб · Работа", 0], ["(2) Хаб · Работа", 1], ["(2) Хаб · Работа", 0],
-                               ["(3) Хаб · Работа", 1], ["Хаб · Работа", 1]])
+        got = run([["title", 0], ["title", 2], ["title", 2], ["title", 3], ["title", 0]], title="Hub · Work")
+        self.assertEqual(got, [["Hub · Work", 0], ["(2) Hub · Work", 1], ["(2) Hub · Work", 0],
+                               ["(3) Hub · Work", 1], ["Hub · Work", 1]])
 
     def test_the_core_resetting_the_name_gets_the_number_back_without_a_loop(self):
-        got = run([["title", 1], ["core", "Хаб"], ["title", 1], ["core", "Хаб · Дом"], ["title", 1], ["title", 0]],
-                  title="Хаб")
-        self.assertEqual(got, [["(1) Хаб", 1], ["(1) Хаб", 1], ["(1) Хаб · Дом", 1], ["Хаб · Дом", 1]])
+        got = run([["title", 1], ["core", "Hub"], ["title", 1], ["core", "Hub · Home"], ["title", 1], ["title", 0]],
+                  title="Hub")
+        self.assertEqual(got, [["(1) Hub", 1], ["(1) Hub", 1], ["(1) Hub · Home", 1], ["Hub · Home", 1]])
 
     def test_a_hub_name_that_looks_like_a_number_stays_the_name(self):
-        got = run([["title", 1], ["title", 0]], title="(5) Хаб")
-        self.assertEqual(got, [["(1) (5) Хаб", 1], ["(5) Хаб", 1]])
+        got = run([["title", 1], ["title", 0]], title="(5) Hub")
+        self.assertEqual(got, [["(1) (5) Hub", 1], ["(5) Hub", 1]])
 
 
 if __name__ == "__main__":
